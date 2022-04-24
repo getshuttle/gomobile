@@ -227,11 +227,7 @@ func envInit() (err error) {
 				// targets, there is also a "maccatalyst" tag.
 				// Some additional context on this can be found here:
 				// https://stackoverflow.com/questions/12132933/preprocessor-macro-for-os-x-targets/49560690#49560690
-				if arch == "arm64" {
-					goos = "ios"
-				} else {
-					goos = "darwin"
-				}
+				goos = "ios"
 				sdk = "macosx"
 				clang, cflags, err = envClang(sdk)
 				// TODO(ydnar): the following 3 lines MAY be needed to compile
