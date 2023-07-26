@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"golang.org/x/mobile/internal/sdkpath"
 )
 
 func TestRFC1034Label(t *testing.T) {
@@ -111,7 +113,7 @@ func TestAndroidBuild(t *testing.T) {
 var androidBuildTmpl = template.Must(template.New("output").Parse(`GOMOBILE={{.GOPATH}}/pkg/gomobile
 WORK=$WORK
 mkdir -p $WORK/lib/armeabi-v7a
-GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 go build -tags tag1 -x -buildmode=c-shared -o $WORK/lib/armeabi-v7a/libbasic.so golang.org/x/mobile/example/basic
+GOMODCACHE=$GOPATH/pkg/mod GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 go build -tags tag1 -x -buildmode=c-shared -o $WORK/lib/armeabi-v7a/libbasic.so golang.org/x/mobile/example/basic
 `))
 
 func TestParseBuildTarget(t *testing.T) {
@@ -228,12 +230,8 @@ func TestBuildWithGoModules(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			switch target {
 			case "android":
-				androidHome := os.Getenv("ANDROID_HOME")
-				if androidHome == "" {
-					t.Skip("ANDROID_HOME not found, skipping bind")
-				}
-				if _, err := androidAPIPath(); err != nil {
-					t.Skip("No android API platform found in $ANDROID_HOME, skipping bind")
+				if _, err := sdkpath.AndroidAPIPath(minAndroidAPI); err != nil {
+					t.Skip("No compatible android API platform found, skipping bind")
 				}
 			case "ios":
 				if !xcodeAvailable() {

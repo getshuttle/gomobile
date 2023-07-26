@@ -14,18 +14,22 @@ import (
 	"strings"
 	"testing"
 	"text/template"
+
+	"golang.org/x/mobile/internal/sdkpath"
 )
 
 func TestBindAndroid(t *testing.T) {
-	androidHome := os.Getenv("ANDROID_HOME")
-	if androidHome == "" {
-		t.Skip("ANDROID_HOME not found, skipping bind")
-	}
-	platform, err := androidAPIPath()
+	platform, err := sdkpath.AndroidAPIPath(minAndroidAPI)
 	if err != nil {
-		t.Skip("No android API platform found in $ANDROID_HOME, skipping bind")
+		t.Skip("No compatible Android API platform found, skipping bind")
 	}
-	platform = strings.Replace(platform, androidHome, "$ANDROID_HOME", -1)
+	// platform is a path like "/path/to/Android/sdk/platforms/android-32"
+	components := strings.Split(platform, string(filepath.Separator))
+	if len(components) < 2 {
+		t.Fatalf("API path is too short: %s", platform)
+	}
+	components = components[len(components)-2:]
+	platformRel := filepath.Join("$ANDROID_HOME", components[0], components[1])
 
 	defer func() {
 		xout = os.Stderr
@@ -77,7 +81,7 @@ func TestBindAndroid(t *testing.T) {
 			JavaPkg         string
 		}{
 			outputData:      output,
-			AndroidPlatform: platform,
+			AndroidPlatform: platformRel,
 			JavaPkg:         tc.javaPkg,
 		}
 
@@ -183,10 +187,10 @@ func TestBindApple(t *testing.T) {
 var bindAndroidTmpl = template.Must(template.New("output").Parse(`GOMOBILE={{.GOPATH}}/pkg/gomobile
 WORK=$WORK
 GOOS=android CGO_ENABLED=1 gobind -lang=go,java -outdir=$WORK{{if .JavaPkg}} -javapkg={{.JavaPkg}}{{end}} golang.org/x/mobile/asset
-mkdir -p $WORK/src
-PWD=$WORK/src GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 GOPATH=$WORK:$GOPATH go mod tidy
-PWD=$WORK/src GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 GOPATH=$WORK:$GOPATH go build -x -buildmode=c-shared -o=$WORK/android/src/main/jniLibs/armeabi-v7a/libgojni.so ./gobind
-PWD=$WORK/java javac -d $WORK/javac-output -source 1.7 -target 1.7 -bootclasspath {{.AndroidPlatform}}/android.jar *.java
+mkdir -p $WORK/src-android-arm
+PWD=$WORK/src-android-arm GOMODCACHE=$GOPATH/pkg/mod GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 GOPATH=$WORK:$GOPATH go mod tidy
+PWD=$WORK/src-android-arm GOMODCACHE=$GOPATH/pkg/mod GOOS=android GOARCH=arm CC=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang CXX=$NDK_PATH/toolchains/llvm/prebuilt/{{.NDKARCH}}/bin/armv7a-linux-androideabi16-clang++ CGO_ENABLED=1 GOARM=7 GOPATH=$WORK:$GOPATH go build -x -buildmode=c-shared -o=$WORK/android/src/main/jniLibs/armeabi-v7a/libgojni.so ./gobind
+PWD=$WORK/java javac -d $WORK/javac-output -source 1.8 -target 1.8 -bootclasspath {{.AndroidPlatform}}/android.jar *.java
 jar c -C $WORK/javac-output .
 `))
 
@@ -194,9 +198,9 @@ var bindAppleTmpl = template.Must(template.New("output").Parse(`GOMOBILE={{.GOPA
 WORK=$WORK
 rm -r -f "{{.Output}}.xcframework"
 GOOS=ios CGO_ENABLED=1 gobind -lang=go,objc -outdir=$WORK/ios -tags=ios{{if .Prefix}} -prefix={{.Prefix}}{{end}} golang.org/x/mobile/asset
-mkdir -p $WORK/ios/src
-PWD=$WORK/ios/src GOOS=ios GOARCH=arm64 GOFLAGS=-tags=ios CC=iphoneos-clang CXX=iphoneos-clang++ CGO_CFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_CXXFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_LDFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_ENABLED=1 DARWIN_SDK=iphoneos GOPATH=$WORK/ios:$GOPATH go mod tidy
-PWD=$WORK/ios/src GOOS=ios GOARCH=arm64 GOFLAGS=-tags=ios CC=iphoneos-clang CXX=iphoneos-clang++ CGO_CFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_CXXFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_LDFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_ENABLED=1 DARWIN_SDK=iphoneos GOPATH=$WORK/ios:$GOPATH go build -x -buildmode=c-archive -o $WORK/{{.Output}}-ios-arm64.a ./gobind
+mkdir -p $WORK/ios/src-arm64
+PWD=$WORK/ios/src-arm64 GOMODCACHE=$GOPATH/pkg/mod GOOS=ios GOARCH=arm64 GOFLAGS=-tags=ios CC=iphoneos-clang CXX=iphoneos-clang++ CGO_CFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_CXXFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_LDFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_ENABLED=1 DARWIN_SDK=iphoneos GOPATH=$WORK/ios:$GOPATH go mod tidy
+PWD=$WORK/ios/src-arm64 GOMODCACHE=$GOPATH/pkg/mod GOOS=ios GOARCH=arm64 GOFLAGS=-tags=ios CC=iphoneos-clang CXX=iphoneos-clang++ CGO_CFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_CXXFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_LDFLAGS=-isysroot iphoneos -miphoneos-version-min=13.0 -fembed-bitcode -arch arm64 CGO_ENABLED=1 DARWIN_SDK=iphoneos GOPATH=$WORK/ios:$GOPATH go build -x -buildmode=c-archive -o $WORK/{{.Output}}-ios-arm64.a ./gobind
 mkdir -p $WORK/ios/iphoneos/{{.Output}}.framework/Versions/A/Headers
 ln -s A $WORK/ios/iphoneos/{{.Output}}.framework/Versions/Current
 ln -s Versions/Current/Headers $WORK/ios/iphoneos/{{.Output}}.framework/Headers
@@ -273,12 +277,8 @@ func TestBindWithGoModules(t *testing.T) {
 		t.Run(target, func(t *testing.T) {
 			switch target {
 			case "android":
-				androidHome := os.Getenv("ANDROID_HOME")
-				if androidHome == "" {
-					t.Skip("ANDROID_HOME not found, skipping bind")
-				}
-				if _, err := androidAPIPath(); err != nil {
-					t.Skip("No android API platform found in $ANDROID_HOME, skipping bind")
+				if _, err := sdkpath.AndroidAPIPath(minAndroidAPI); err != nil {
+					t.Skip("No compatible Android API platform found, skipping bind")
 				}
 			case "ios":
 				if !xcodeAvailable() {
